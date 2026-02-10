@@ -131,21 +131,65 @@ class FileProcessor:
         
         return modified_text, replacements
     
-    def process_file(self, filepath: str, old_domain: str, new_domain: str) -> dict:
+    def replace_site_name_in_text(self, text: str, old_name: str, new_name: str) -> tuple:
         """
-        Обработка одного файла - замена домена
+        Замена названия сайта в тексте с учетом регистра
+        
+        Args:
+            text: исходный текст
+            old_name: старое название
+            new_name: новое название
+            
+        Returns:
+            (modified_text, replacements_count)
+        """
+        if not old_name or not new_name:
+            return text, 0
+        
+        replacements = 0
+        modified_text = text
+        
+        #  Создаем варианты в разных регистрах
+        variants = [
+            (old_name, new_name),
+            (old_name.lower(), new_name.lower()),
+            (old_name.upper(), new_name.upper()),
+            (old_name.capitalize(), new_name.capitalize()),
+        ]
+        
+        # Убираем дубликаты
+        variants = list(set(variants))
+        
+        for old_variant, new_variant in variants:
+            if old_variant == new_variant:
+                continue
+            
+            # Используем word boundaries для точной замены
+            pattern = re.compile(r'\b' + re.escape(old_variant) + r'\b')
+            modified_text, count = pattern.subn(new_variant, modified_text)
+            replacements += count
+        
+        return modified_text, replacements
+    
+    def process_file(self, filepath: str, old_domain: str, new_domain: str, 
+                    old_site_name: str = None, new_site_name: str = None) -> dict:
+        """
+        Обработка одного файла - замена домена и названия
         
         Args:
             filepath: путь к файлу
             old_domain: старый домен
             new_domain: новый домен
+            old_site_name: старое название сайта (опционально)
+            new_site_name: новое название сайта (опционально)
             
         Returns:
-            dict с результатами: {'success': bool, 'replacements': int, 'error': str}
+            dict с результатами: {'success': bool, 'replacements': int, 'name_replacements': int, 'error': str}
         """
         result = {
             'success': False,
             'replacements': 0,
+            'name_replacements': 0,
             'error': None
         }
         
@@ -165,34 +209,44 @@ class FileProcessor:
             
             # Заменяем домен
             modified_content, replacements = self.replace_domain_in_text(content, old_domain, new_domain)
+            result['replacements'] = replacements
             
-            # Записываем обратно только если были изменения
-            if replacements > 0:
+            # Заменяем название сайта (если указано)
+            if old_site_name and new_site_name:
+                modified_content, name_replacements = self.replace_site_name_in_text(
+                    modified_content, old_site_name, new_site_name
+                )
+                result['name_replacements'] = name_replacements
+            
+        # Записываем обратно только если были изменения
+            total_changes = replacements + result['name_replacements']
+            if total_changes > 0:
                 try:
                     with open(filepath, 'w', encoding=encoding or 'utf-8') as f:
                         f.write(modified_content)
                     
                     result['success'] = True
-                    result['replacements'] = replacements
                 except Exception as e:
                     result['error'] = f'cannot_write_file: {str(e)}'
             else:
                 result['success'] = True
-                result['replacements'] = 0
             
         except Exception as e:
             result['error'] = str(e)
         
         return result
     
-    def process_directory(self, directory: str, old_domain: str, new_domain: str) -> dict:
+    def process_directory(self, directory: str, old_domain: str, new_domain: str, 
+                         old_site_name: str = None, new_site_name: str = None) -> dict:
         """
-        Обработка всей директории - замена домена во всех файлах
+        Обработка всей директории - замена домена и названия сайта во всех файлах
         
         Args:
             directory: путь к директории
             old_domain: старый домен
             new_domain: новый домен
+            old_site_name: старое название сайта (опционально)
+            new_site_name: новое название сайта (опционально)
             
         Returns:
             dict со статистикой обработки
@@ -203,6 +257,7 @@ class FileProcessor:
             'skipped_files': 0,
             'error_files': 0,
             'total_replacements': 0,
+            'total_name_replacements': 0,
             'errors': []
         }
         
@@ -213,7 +268,7 @@ class FileProcessor:
                 stats['total_files'] += 1
                 
                 # Обрабатываем файл
-                result = self.process_file(filepath, old_domain, new_domain)
+                result = self.process_file(filepath, old_domain, new_domain, old_site_name, new_site_name)
                 
                 if result['success']:
                     if result.get('error') == 'binary_file_skipped':
@@ -221,6 +276,7 @@ class FileProcessor:
                     else:
                         stats['processed_files'] += 1
                         stats['total_replacements'] += result['replacements']
+                        stats['total_name_replacements'] += result.get('name_replacements', 0)
                 else:
                     stats['error_files'] += 1
                     stats['errors'].append({

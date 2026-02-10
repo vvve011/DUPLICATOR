@@ -7,6 +7,7 @@ from .archive_handler import ArchiveHandler
 from .domain_detector import DomainDetector
 from .domain_generator import DomainGenerator
 from .file_processor import FileProcessor
+from .site_name_replacer import SiteNameReplacer
 
 
 class BatchProcessor:
@@ -18,6 +19,7 @@ class BatchProcessor:
         self.domain_detector = DomainDetector()
         self.domain_generator = DomainGenerator()
         self.file_processor = FileProcessor()
+        self.site_name_replacer = SiteNameReplacer()
         
     def process_single_archive(self, archive_path: str, copies_count: int, 
                                domain_zone: str, temp_base_dir: str,
@@ -87,6 +89,12 @@ class BatchProcessor:
             
             result['original_domain'] = original_domain
             
+            # 3.5. Определяем название сайта
+            if progress_callback:
+                progress_callback(f"Обработка {archive_name}: определение названия сайта...")
+            
+            original_site_name = self.site_name_replacer.detect_site_name(extract_dir, original_domain)
+            
             if progress_callback:
                 progress_callback(f"Обработка {archive_name}: генерация доменов...")
             
@@ -108,8 +116,17 @@ class BatchProcessor:
                 copy_dir = os.path.join(archive_temp_dir, f"copy_{idx}")
                 shutil.copytree(extract_dir, copy_dir)
                 
-                # Заменяем домен во всех файлах
-                stats = self.file_processor.process_directory(copy_dir, original_domain, new_domain)
+                # Генерируем новое название из нового домена
+                new_site_name = self.site_name_replacer.generate_site_name_from_domain(new_domain)
+                
+                # Заменяем домен и название сайта во всех файлах
+                stats = self.file_processor.process_directory(
+                    copy_dir, 
+                    original_domain, 
+                    new_domain,
+                    original_site_name,
+                    new_site_name
+                )
                 
                 # Создаем архив из обработанной копии
                 archive_name_output = self.archive_handler.get_archive_name_from_domain(new_domain)
