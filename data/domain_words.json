@@ -1,0 +1,21 @@
+{
+  "short_words": [
+    "bio", "pure", "care", "well", "zen", "lux", "nova", "via",
+    "air", "pro", "neo", "max", "liv", "sun", "sky", "tea",
+    "sol", "ace", "aura", "calm", "flex", "glow", "herb", "leaf",
+    "medz", "nutr", "opti", "qua", "rise", "trim", "wave", "xcel",
+    "zest", "apex", "aqua", "bliss", "core", "dash", "echo", "edge",
+    "flow", "fresh", "fuse", "gain", "heal", "keen", "keto", "lean",
+    "life", "mint", "mode", "mojo", "peak", "pulse", "root", "sage",
+    "shine", "spark", "sync", "tone", "vibe", "zeal", "zone"
+  ],
+  "random_consonants": ["x", "z", "q", "w", "k", "v", "j"],
+  "random_vowels": ["a", "e", "i", "o", "u", "y"],
+  "vowel_replacements": {
+    "a": ["e", "o"],
+    "e": ["i", "a"],
+    "i": ["e", "y"],
+    "o": ["u", "a"],
+    "u": ["o", "y"]
+  }
+}
