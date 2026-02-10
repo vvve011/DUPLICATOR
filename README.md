@@ -24,7 +24,13 @@ cd DUPLICATOR
 ### 2. Установите зависимости
 
 ```bash
-pip install -r requirements.txt
+pip3 install -r requirements.txt
+```
+
+**Или используйте автоматический скрипт запуска:**
+```bash
+chmod +x run.sh
+./run.sh
 ```
 
 ### 3. (Опционально) Для поддержки RAR архивов
