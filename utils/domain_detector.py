@@ -10,32 +10,82 @@ class DomainDetector:
     
     def __init__(self):
         """Инициализация детектора"""
-        # Паттерны для поиска доменов
+        # Приоритетные паттерны (высокий вес)
+        self.priority_patterns = [
+            # Base URL в HTML
+            (r'<base\s+href=["\'](https?://)?(?:www\.)?([a-zA-Z0-9-]+\.[a-zA-Z]{2,})', 100),
+            # Canonical URL
+            (r'<link\s+rel=["\']canonical["\']\s+href=["\'](https?://)?(?:www\.)?([a-zA-Z0-9-]+\.[a-zA-Z]{2,})', 90),
+            # Open Graph URL
+            (r'<meta\s+property=["\']og:url["\']\s+content=["\'](https?://)?(?:www\.)?([a-zA-Z0-9-]+\.[a-zA-Z]{2,})', 80),
+            # WordPress site_url
+            (r'["\']site_url["\']\s*[=:]\s*["\'](?:https?://)?(?:www\.)?([a-zA-Z0-9-]+\.[a-zA-Z]{2,})', 70),
+            # define('WP_HOME' или define('WP_SITEURL'
+            (r'define\(["\']WP_(?:HOME|SITEURL)["\']\s*,\s*["\'](?:https?://)?(?:www\.)?([a-zA-Z0-9-]+\.[a-zA-Z]{2,})', 70),
+        ]
+        
+        # Обычные паттерны для поиска доменов
         self.domain_patterns = [
             # С протоколом
             r'https?://(?:www\.)?([a-zA-Z0-9-]+\.[a-zA-Z]{2,})',
             # Без протокола с www
             r'www\.([a-zA-Z0-9-]+\.[a-zA-Z]{2,})',
-            # Только домен
-            r'\b([a-zA-Z0-9-]+\.[a-zA-Z]{2,})\b',
             # В кавычках
             r'["\']([a-zA-Z0-9-]+\.[a-zA-Z]{2,})["\']',
+            # Только домен (границы слов)
+            r'\b([a-zA-Z0-9-]+\.[a-zA-Z]{2,})\b',
         ]
         
-        # Расширения файлов для анализа
-        self.text_extensions = {
-            '.html', '.htm', '.php', '.css', '.js', '.txt', 
-            '.json', '.xml', '.sql', '.conf', '.config',
-            '.htaccess', '.env', '.ini', '.yaml', '.yml'
+        # Расширения файлов для анализа с весами
+        self.file_weights = {
+            '.html': 3,  # HTML файлы важнее
+            '.htm': 3,
+            '.php': 3,
+            '.xml': 2,   # Конфиги важны
+            '.conf': 2,
+            '.config': 2,
+            '.htaccess': 2,
+            '.env': 2,
+            '.ini': 2,
+            '.css': 1,   # CSS/JS менее приоритетны
+            '.js': 1,
+            '.txt': 1,
+            '.json': 1,
+            '.sql': 1,
+            '.yaml': 1,
+            '.yml': 1,
         }
         
-        # Игнорируемые домены (CDN, популярные сервисы)
+        self.text_extensions = set(self.file_weights.keys())
+        
+        # Расширенный список игнорируемых доменов
         self.ignore_domains = {
-            'google.com', 'facebook.com', 'twitter.com', 'instagram.com',
-            'youtube.com', 'googleapis.com', 'jquery.com', 'bootstrap.com',
-            'cloudflare.com', 'jsdelivr.net', 'unpkg.com', 'cdnjs.com',
-            'fontawesome.com', 'fonts.google.com', 'w3.org', 'schema.org',
-            'example.com', 'localhost', 'mailchimp.com', 'gstatic.com'
+            # Google сервисы
+            'google.com', 'googleapis.com', 'google-analytics.com', 'googletagmanager.com',
+            'googlesyndication.com', 'doubleclick.net', 'gstatic.com', 'fonts.google.com',
+            'maps.google.com', 'accounts.google.com',
+            
+            # Социальные сети
+            'facebook.com', 'twitter.com', 'instagram.com', 'youtube.com', 'linkedin.com',
+            'pinterest.com', 'tiktok.com', 'snapchat.com', 'vk.com', 'ok.ru',
+            'fb.com', 't.co', 'youtu.be',
+            
+            # CDN и библиотеки
+            'cloudflare.com', 'jsdelivr.net', 'unpkg.com', 'cdnjs.com', 'cdn.jsdelivr.net',
+            'stackpath.bootstrapcdn.com', 'maxcdn.bootstrapcdn.com', 'code.jquery.com',
+            'ajax.googleapis.com', 'use.fontawesome.com', 'fontawesome.com',
+            
+            # Популярные сервисы
+            'mailchimp.com', 'stripe.com', 'paypal.com', 'recaptcha.net',
+            'w3.org', 'schema.org', 'creativecommons.org', 'wordpress.org',
+            'example.com', 'example.net', 'example.org', 'localhost',
+            
+            # Метрики и аналитика
+            'yandex.ru', 'yandex.com', 'metrika.yandex.ru', 'counter.yadro.ru',
+            'mc.yandex.ru', 'top-fwz1.mail.ru', 'hotjar.com', 'crazyegg.com',
+            
+            # Прочие
+            'gravatar.com', 'disqus.com', 'addthis.com', 'sharethis.com',
         }
     
     def is_text_file(self, filepath: str) -> bool:
@@ -118,9 +168,57 @@ class DomainDetector:
         
         return True
     
+    def extract_priority_domains(self, text: str) -> Dict[str, int]:
+        """Извлечение доменов из приоритетных паттернов с весами"""
+        priority_domains = {}
+        
+        for pattern, weight in self.priority_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE | re.DOTALL)
+            for match in matches:
+                # В приоритетных паттернах домен может быть во второй группе
+                domain = match[1] if isinstance(match, tuple) and len(match) > 1 else match
+                if domain:
+                    clean = self.clean_domain(domain)
+                    if self.is_valid_domain(clean):
+                        priority_domains[clean] = max(priority_domains.get(clean, 0), weight)
+        
+        return priority_domains
+    
+    def get_file_weight(self, filepath: str) -> int:
+        """Получение веса файла по расширению"""
+        _, ext = os.path.splitext(filepath)
+        return self.file_weights.get(ext.lower(), 1)
+    
+    def is_subdomain(self, domain: str, base_domain: str) -> bool:
+        """Проверка, является ли домен поддоменом базового домена"""
+        return domain.endswith('.' + base_domain) or domain == base_domain
+    
+    def normalize_to_base_domain(self, domain: str) -> str:
+        """Нормализация домена к базовому (удаление поддоменов)"""
+        parts = domain.split('.')
+        
+        # Если больше 2 частей и не известные двухуровневые зоны
+        if len(parts) > 2:
+            # Список двухуровневых зон
+            two_level_zones = ['co.uk', 'com.au', 'co.jp', 'com.br', 'co.za']
+            
+            # Проверяем последние две части
+            last_two = '.'.join(parts[-2:])
+            if last_two in two_level_zones:
+                # Берем 3 последние части (subdomain.domain.co.uk)
+                if len(parts) > 3:
+                    return '.'.join(parts[-3:])
+            else:
+                # Берем 2 последние части (domain.com)
+                return '.'.join(parts[-2:])
+        
+        return domain
+    
     def detect_domain_in_directory(self, directory: str) -> Optional[str]:
-        """Определение основного домена в директории с файлами сайта"""
-        domain_counter = Counter()
+        """Определение основного домена в директории с файлами сайта (улучшенный алгоритм)"""
+        # Счетчик с весами
+        weighted_domains = Counter()
+        priority_domains = {}
         files_analyzed = 0
         
         # Обходим все файлы в директории
@@ -138,22 +236,41 @@ class DomainDetector:
                     continue
                 
                 files_analyzed += 1
+                file_weight = self.get_file_weight(filepath)
                 
-                # Извлекаем домены
+                # Ищем приоритетные паттерны (только в HTML/PHP файлах)
+                ext = os.path.splitext(filepath)[1].lower()
+                if ext in ['.html', '.htm', '.php']:
+                    prio_doms = self.extract_priority_domains(content)
+                    for domain, weight in prio_doms.items():
+                        priority_domains[domain] = max(priority_domains.get(domain, 0), weight)
+                
+                # Извлекаем обычные домены
                 domains = self.extract_domains_from_text(content)
                 
-                # Очищаем и валидируем
+                # Очищаем и валидируем с весами
                 for domain in domains:
                     clean = self.clean_domain(domain)
                     if self.is_valid_domain(clean):
-                        domain_counter[clean] += 1
+                        # Нормализуем к базовому домену (удаляем поддомены)
+                        base_domain = self.normalize_to_base_domain(clean)
+                        weighted_domains[base_domain] += file_weight
         
-        # Если ничего не найдено
-        if not domain_counter:
+        # Если нашли приоритетные домены - выбираем из них
+        if priority_domains:
+            # Сортируем по весу приоритета
+            sorted_priority = sorted(priority_domains.items(), key=lambda x: x[1], reverse=True)
+            # Берем домен с наивысшим приоритетом
+            best_domain = sorted_priority[0][0]
+            # Нормализуем
+            return self.normalize_to_base_domain(best_domain)
+        
+        # Если приоритетных нет - берем по частоте с учетом весов
+        if not weighted_domains:
             return None
         
-        # Возвращаем самый частый домен
-        most_common = domain_counter.most_common(1)[0][0]
+        # Возвращаем самый частый домен с учетом весов
+        most_common = weighted_domains.most_common(1)[0][0]
         
         return most_common
     
