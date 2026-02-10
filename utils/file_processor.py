@@ -149,12 +149,13 @@ class FileProcessor:
         replacements = 0
         modified_text = text
         
-        #  Создаем варианты в разных регистрах
+        # Создаем варианты в разных регистрах
         variants = [
             (old_name, new_name),
             (old_name.lower(), new_name.lower()),
             (old_name.upper(), new_name.upper()),
             (old_name.capitalize(), new_name.capitalize()),
+            (old_name.title(), new_name.title()),  # Title Case
         ]
         
         # Убираем дубликаты
@@ -236,6 +237,44 @@ class FileProcessor:
         
         return result
     
+    def rename_directories(self, directory: str, old_name: str, new_name: str) -> int:
+        """Переименование папок содержащих старое название"""
+        if not old_name or not new_name:
+            return 0
+        
+        renamed_count = 0
+        dirs_to_rename = []
+        
+        # Собираем папки снизу вверх
+        for root, dirs, files in os.walk(directory, topdown=False):
+            for dirname in dirs:
+                if old_name.lower() in dirname.lower():
+                    dir_path = os.path.join(root, dirname)
+                    dirs_to_rename.append((dir_path, dirname))
+        
+        # Переименовываем
+        for dir_path, dirname in dirs_to_rename:
+            try:
+                new_dirname = dirname
+                for old_var, new_var in [
+                    (old_name, new_name),
+                    (old_name.lower(), new_name.lower()),
+                    (old_name.upper(), new_name.upper()),
+                    (old_name.capitalize(), new_name.capitalize()),
+                    (old_name.title(), new_name.title())
+                ]:
+                    new_dirname = new_dirname.replace(old_var, new_var)
+                
+                if new_dirname != dirname:
+                    new_path = os.path.join(os.path.dirname(dir_path), new_dirname)
+                    if not os.path.exists(new_path):
+                        os.rename(dir_path, new_path)
+                        renamed_count += 1
+            except Exception:
+                pass
+        
+        return renamed_count
+    
     def process_directory(self, directory: str, old_domain: str, new_domain: str, 
                          old_site_name: str = None, new_site_name: str = None) -> dict:
         """
@@ -258,8 +297,13 @@ class FileProcessor:
             'error_files': 0,
             'total_replacements': 0,
             'total_name_replacements': 0,
+            'renamed_directories': 0,
             'errors': []
         }
+        
+        # Сначала переименовываем папки если есть название
+        if old_site_name and new_site_name:
+            stats['renamed_directories'] = self.rename_directories(directory, old_site_name, new_site_name)
         
         # Обходим все файлы в директории
         for root, dirs, files in os.walk(directory):
