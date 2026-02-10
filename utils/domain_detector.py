@@ -214,6 +214,61 @@ class DomainDetector:
         
         return domain
     
+    def extract_domain_from_filename(self, filename: str) -> Optional[str]:
+        """
+        Извлечение домена из названия файла/архива
+        
+        Примеры:
+        - "example.com.zip" → "example.com"
+        - "mysite.net_backup.rar" → "mysite.net"
+        - "site-example-com.zip" → "example.com"
+        - "example_com_2024.zip" → "example.com"
+        """
+        # Убираем расширение архива
+        name = filename.lower()
+        for ext in ['.zip', '.rar', '.7z', '.tar', '.gz', '.tar.gz']:
+            name = name.replace(ext, '')
+        
+        # Убираем общие суффиксы
+        for suffix in ['_backup', '-backup', '_archive', '-archive', '_site', '-site', 
+                       '_www', '-www', '_web', '-web']:
+            name = name.replace(suffix, '')
+        
+        # Убираем даты (2024, 20240102 и т.д.)
+        name = re.sub(r'[_-]?\d{4,8}[_-]?', '', name)
+        
+        # Пробуем найти домен напрямую
+        # Паттерн: что-то.зона (example.com)
+        domain_match = re.search(r'([a-zA-Z0-9-]+\.[a-zA-Z]{2,})', name)
+        if domain_match:
+            domain = domain_match.group(1)
+            if self.is_valid_domain(domain):
+                return self.clean_domain(domain)
+        
+        # Пробуем варианты с дефисами/подчеркиваниями вместо точек
+        # site-example-com → site.example.com → example.com
+        # example_com → example.com
+        for separator in ['-', '_']:
+            if separator in name:
+                # Заменяем последний разделитель на точку (это может быть зона)
+                parts = name.split(separator)
+                if len(parts) >= 2:
+                    # Пробуем последние 2-3 части
+                    for i in range(min(3, len(parts)), 1, -1):
+                        potential = '.'.join(parts[-i:])
+                        if self.is_valid_domain(potential):
+                            return self.clean_domain(potential)
+        
+        # Если не нашли - пробуем добавить популярные зоны
+        if name and len(name) >= 3:
+            for zone in ['com', 'net', 'org', 'ru', 'info']:
+                potential = f"{name}.{zone}"
+                if self.is_valid_domain(potential):
+                    # Возвращаем без зоны, т.к. зона будет добавлена позже
+                    return None
+        
+        return None
+    
     def detect_domain_in_directory(self, directory: str) -> Optional[str]:
         """Определение основного домена в директории с файлами сайта (улучшенный алгоритм)"""
         # Счетчик с весами

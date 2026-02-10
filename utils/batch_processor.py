@@ -63,11 +63,21 @@ class BatchProcessor:
                 progress_callback(f"Обработка {archive_name}: определение домена...")
             
             # 3. Определяем текущий домен
-            original_domain = self.domain_detector.detect_domain_in_directory(extract_dir)
+            # Сначала пробуем извлечь из названия архива (высокий приоритет!)
+            domain_from_filename = self.domain_detector.extract_domain_from_filename(archive_name)
             
-            if not original_domain:
-                result['error'] = 'Не удалось определить домен'
-                return result
+            if domain_from_filename:
+                # Домен найден в названии архива - используем его
+                original_domain = domain_from_filename
+                if progress_callback:
+                    progress_callback(f"Обработка {archive_name}: домен из названия: {original_domain}")
+            else:
+                # Ищем в файлах сайта
+                original_domain = self.domain_detector.detect_domain_in_directory(extract_dir)
+                
+                if not original_domain:
+                    result['error'] = 'Не удалось определить домен'
+                    return result
             
             result['original_domain'] = original_domain
             
