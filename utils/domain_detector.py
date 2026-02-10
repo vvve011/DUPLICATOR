@@ -259,18 +259,25 @@ class DomainDetector:
                         if self.is_valid_domain(potential):
                             return self.clean_domain(potential)
         
-        # Если не нашли - пробуем добавить популярные зоны
+        # Если не нашли полный домен, но есть чистое название (без зоны)
+        # Возвращаем его как подсказку для дальнейшего поиска
         if name and len(name) >= 3:
-            for zone in ['com', 'net', 'org', 'ru', 'info']:
-                potential = f"{name}.{zone}"
-                if self.is_valid_domain(potential):
-                    # Возвращаем без зоны, т.к. зона будет добавлена позже
-                    return None
+            # Очищаем от недопустимых символов
+            clean_name = re.sub(r'[^a-zA-Z0-9-]', '', name)
+            if len(clean_name) >= 3 and clean_name[0].isalpha():
+                # Возвращаем название без зоны (будет использовано как подсказка)
+                return clean_name.lower()
         
         return None
     
-    def detect_domain_in_directory(self, directory: str) -> Optional[str]:
-        """Определение основного домена в директории с файлами сайта (улучшенный алгоритм)"""
+    def detect_domain_in_directory(self, directory: str, hint_from_filename: Optional[str] = None) -> Optional[str]:
+        """
+        Определение основного домена в директории с файлами сайта (улучшенный алгоритм)
+        
+        Args:
+            directory: путь к директории с файлами
+            hint_from_filename: подсказка из названия файла (например "dimvital" из "DimVital.zip")
+        """
         # Счетчик с весами
         weighted_domains = Counter()
         priority_domains = {}
@@ -310,6 +317,29 @@ class DomainDetector:
                         # Нормализуем к базовому домену (удаляем поддомены)
                         base_domain = self.normalize_to_base_domain(clean)
                         weighted_domains[base_domain] += file_weight
+        
+        # Если есть подсказка из названия файла - фильтруем домены
+        if hint_from_filename and len(hint_from_filename) >= 3:
+            # Ищем домены, содержащие подсказку
+            matching_domains = {}
+            
+            # Проверяем приоритетные домены
+            for domain, weight in priority_domains.items():
+                domain_name = domain.split('.')[0]  # берем имя без зоны
+                if hint_from_filename.lower() in domain_name.lower() or domain_name.lower() in hint_from_filename.lower():
+                    matching_domains[domain] = weight + 1000  # Дополнительный бонус
+            
+            # Проверяем взвешенные домены
+            for domain, count in weighted_domains.items():
+                domain_name = domain.split('.')[0]
+                if hint_from_filename.lower() in domain_name.lower() or domain_name.lower() in hint_from_filename.lower():
+                    if domain not in matching_domains:
+                        matching_domains[domain] = count + 500  # Бонус за совпадение
+            
+            # Если нашли совпадения - возвращаем лучшее
+            if matching_domains:
+                best_match = max(matching_domains.items(), key=lambda x: x[1])[0]
+                return self.normalize_to_base_domain(best_match)
         
         # Если нашли приоритетные домены - выбираем из них
         if priority_domains:

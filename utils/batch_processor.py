@@ -66,14 +66,20 @@ class BatchProcessor:
             # Сначала пробуем извлечь из названия архива (высокий приоритет!)
             domain_from_filename = self.domain_detector.extract_domain_from_filename(archive_name)
             
-            if domain_from_filename:
-                # Домен найден в названии архива - используем его
+            if domain_from_filename and '.' in domain_from_filename:
+                # Полный домен найден в названии архива (example.com) - используем его
                 original_domain = domain_from_filename
                 if progress_callback:
                     progress_callback(f"Обработка {archive_name}: домен из названия: {original_domain}")
             else:
-                # Ищем в файлах сайта
-                original_domain = self.domain_detector.detect_domain_in_directory(extract_dir)
+                # Либо нет домена, либо только подсказка (dimvital)
+                hint = domain_from_filename if domain_from_filename else None
+                
+                if progress_callback and hint:
+                    progress_callback(f"Обработка {archive_name}: поиск с подсказкой '{hint}'...")
+                
+                # Ищем в файлах сайта с подсказкой из названия
+                original_domain = self.domain_detector.detect_domain_in_directory(extract_dir, hint_from_filename=hint)
                 
                 if not original_domain:
                     result['error'] = 'Не удалось определить домен'
